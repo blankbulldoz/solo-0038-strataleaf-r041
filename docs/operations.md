@@ -6,4 +6,4 @@ diagnostics.inspect(deep=True) 检查 SQLite 完整性、外键、提交连续�
 
 examples.observations 的 contention 会让独立连接暂持 IMMEDIATE 锁，记录第二句柄的 busy 超时及释放后的成功；retention_pressure 记录读保留点和消费者分别阻止水位推进的现象。它们用独立临时文件，不接触生产路径。观察包含真实修订和异常，适合复核运行边界。
 
-关闭所有调用方句柄再移动数据目录；不支持共享网络盘或多主写入。在空间紧张时先核实 pin/消费者，推进已完成的确认后再回收；回收不自动缩小文件，物理容量由 SQLite 空闲页复用。到期清理只在显式调用时执行，不能把墙钟到期等同于读视图变动。
+关闭所有调用方句柄再移动数据目录；不支持共享网络盘或多主写入。在空间紧张时先核实 pin/消费者，推进已完成的确认后再回收；回收不自动缩小文件，物理容量由 SQLite 空闲页复用。大库上用 `retention.plan(target, chunk)` 建立持久计划，循环调用 `retention.step()`（或 `run(max_steps=...)`）分次推进；每步都是独立的短写事务，可以在任意步之间 `pause`，关闭进程后重新打开同一文件再 `resume` 继续。`retention.status()` 给出 target、已公布 floor、当前安全边界、剩余量与累计删除数；被 pin 或消费者阻塞时 `blocked` 为真且 floor 停止在边界处，推进确认后再继续即可。`compact(target)` 仍可作为一次性调用。到期清理只在显式调用时执行，不能把墙钟到期等同于读视图变动。

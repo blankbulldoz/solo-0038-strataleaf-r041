@@ -5,8 +5,8 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from strataleaf import Database
-from .workflows import seed
+from strataleaf import Database, SnapshotTooOld
+from .workflows import rejected, seed
 
 
 def contention(folder):
@@ -37,12 +37,23 @@ def retention_pressure(folder):
         db.feed.register('offline_replica', first)
         for value in range(3):
             db.batch().put('segments', 'seg_00', {'region': 'east', 'sequence': value + 10}).commit()
-        both = db.retention.compact(db.revision)
+        db.retention.plan(db.revision, chunk=1)
+        planned = db.retention.status()
+        both = db.retention.run()
+        pin_floor = [row.key for row in db.query('segments', limit=100, revision=both['floor']).records]
         db.retention.unpin('long_reader')
-        one = db.retention.compact(db.revision)
+        one = db.retention.run()
+        consumer_floor = [row.key for row in db.query('segments', limit=100, revision=one['floor']).records]
         db.feed.acknowledge('offline_replica', db.revision)
-        none = db.retention.compact(db.revision)
-        return {'both_holds': both, 'one_hold': one, 'released': none, 'inspection': db.diagnostics.inspect(True)}
+        none = db.retention.run()
+        final_floor = [row.key for row in db.query('segments', limit=100, revision=none['floor']).records]
+        # Each published floor was read complete while it was current; once the
+        # floor advances, anything below it is refused.
+        stale = rejected(lambda: db.query('segments', revision=both['floor'] - 1), SnapshotTooOld) \
+            if both['floor'] > 0 else None
+        return {'planned': planned, 'both_holds': both, 'one_hold': one, 'released': none,
+                'readable_at_floor': {'pin': pin_floor, 'consumer': consumer_floor, 'final': final_floor},
+                'stale_read': stale, 'inspection': db.diagnostics.inspect(True)}
 
 
 if __name__ == '__main__':

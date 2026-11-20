@@ -40,7 +40,9 @@ class Storage:
         self.connection.executescript(DDL)
         with self.atomic():
             initial = {"format": "1", "head": "0", "floor": "0", "database_id": str(uuid.uuid4()),
-                       "cursor_secret": secrets.token_hex(32), "mode": "primary", "upstream": "", "catalog_epoch": "0"}
+                       "cursor_secret": secrets.token_hex(32), "mode": "primary", "upstream": "", "catalog_epoch": "0",
+                       "compaction_target": "", "compaction_state": "idle", "compaction_base_floor": "0",
+                       "compaction_chunk": "100", "compaction_removed_versions": "0", "compaction_removed_commits": "0"}
             for key, value in initial.items():
                 self.connection.execute("INSERT OR IGNORE INTO meta VALUES (?,?)", (key, value))
             if self.get("format") != "1":
